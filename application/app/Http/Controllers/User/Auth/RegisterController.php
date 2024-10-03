@@ -12,6 +12,8 @@ use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rules\Password;
+use GuzzleHttp\Client;
+use Illuminate\Support\Facades\Http;
 
 class RegisterController extends Controller
 {
@@ -87,10 +89,39 @@ class RegisterController extends Controller
 
         $user = $this->create($request->all());
 
+        // Trigger webhook to CodeIgniter
+        $this->trigger_codeigniter_webhook($request->all());
         $this->guard()->login($user);
 
         return $this->registered($request, $user)
             ?: redirect($this->redirectPath());
+    }
+
+    // Function to send the webhook
+    protected function trigger_codeigniter_webhook(array $data)
+    {
+        // Prepare the data to send to CodeIgniter
+        $ciData = [
+            'first_name' => $data['username'],
+            'last_name' => '', 
+            'email' => $data['email'],
+            'password' => $data['password'],
+            'status' => 1, 
+            'role_id' => 2,
+            'date_added' => strtotime(date("Y-m-d H:i:s")),
+            'verification_code' => rand(100000, 200000),
+        ];
+
+        // Send the data via a webhook to CodeIgniter
+        $url = "http://localhost:8080/login/register";
+        $client = new Client();
+        $response = $client->post($url, [
+            'form_params' => $ciData,
+        ]);
+
+        if ($response->getStatusCode() == 200) {
+        } else {
+        }
     }
 
     protected function create(array $data): \App\Models\User

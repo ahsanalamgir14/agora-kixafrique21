@@ -6,6 +6,8 @@ use App\Http\Controllers\Controller;
 use App\Models\UserLogin;
 use Illuminate\Foundation\Auth\AuthenticatesUsers;
 use Illuminate\Http\Request;
+use GuzzleHttp\Client;
+use Illuminate\Support\Facades\Http; 
 
 
 class LoginController extends Controller
@@ -73,6 +75,9 @@ class LoginController extends Controller
         }
 
         if ($this->attemptLogin($request)) {
+            // $this->trigger_codeigniter_login_webhook($request->only('email', 'password'));
+            // Trigger the webhook to CodeIgniter
+            $this->triggerCodeIgniterLogin($request);
             return $this->sendLoginResponse($request);
         }
 
@@ -85,6 +90,47 @@ class LoginController extends Controller
         return $this->sendFailedLoginResponse($request);
     }
 
+    protected function triggerCodeIgniterLogin(Request $request)
+    {
+        // Trigger webhook after successful login
+        if ($this->attemptLogin($request)) {
+            $client = new Client();
+            $response = $client->post('http://localhost:8080/sso-callback', [
+                'form_params' => [
+                    'email' => $request->input('email'),
+                    'password' => $request->input('password'),
+                ]
+            ]);
+            // Dump session data
+            $sessionData = json_decode($response->getBody()->getContents(), true);
+            // dd($sessionData);
+
+            // Check if response is OK
+            if ($response->getStatusCode() == 200) {
+                // Get session data
+                $ciSessionData = $sessionData['session_data'];
+
+                // Verify login status
+                if ($ciSessionData['logged_in'] === true) {
+                    // Login successful in CodeIgniter project
+                    // Set Laravel session data
+                    session(['user_id' => $ciSessionData['user_id']]);
+                    session(['user_email' => $ciSessionData['user_email']]);
+
+                    // dd('ff');
+                    // Return success response
+                    return response()->json(['success' => true]);
+                } else {
+                    // Handle error
+                    return response()->json(['success' => false, 'error' => 'Login failed']);
+                }
+            } else {
+                // Handle error
+                return response()->json(['success' => false, 'error' => 'Invalid response']);
+            }
+            return response()->json(['success' => false, 'error' => 'SSO failed']);
+        }
+    }
     public function findUsername()
     {
         $login = request()->input('username');
